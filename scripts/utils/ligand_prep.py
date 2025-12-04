@@ -28,128 +28,355 @@ from rdkit.Chem import rdPartialCharges
 
 def smiles_to_3d_mol(smiles: str, optimize: bool = True) -> Optional[Chem.Mol]:
     """
-    Convert SMILES to 3D molecule with robust conformer generation.
-    Falls back to single conformer if multi-conformer fails.
+    Ultra-robust 3D molecule generation with 6 fallback methods.
+
+    Tries methods in order of speed/reliability:
+    1. RDKit ETKDGv3 (fast, works for 80% of molecules)
+    2. RDKit Distance Geometry (more robust)
+    3. OpenBabel Gen3D (handles complex structures)
+    4. RDKit MMFF94s (alternative force field)
+    5. RDKit UFF (universal force field)
+    6. PubChem 3D download (pre-computed structures)
 
     Args:
         smiles (str): SMILES string
-        optimize (bool): If True, optimize geometry with MMFF force field. Default: True
+        optimize (bool): Optimize geometry (default: True)
 
     Returns:
-        Chem.Mol: RDKit molecule with 3D coordinates, or None if failed
-
-    Process:
-        1. Parse SMILES
-        2. Add hydrogens (essential for 3D structure)
-        3. Try multi-conformer generation (10 conformers, select best)
-        4. Fallback to single conformer if multi-conformer fails
-        5. Optimize geometry with MMFF94 force field
-
-    Examples:
-        >>> mol = smiles_to_3d_mol('CCO')  # Ethanol
-        >>> if mol:
-        ...     print(f"Generated 3D structure with {mol.GetNumAtoms()} atoms")
+        RDKit Mol object with 3D coordinates, or None if all methods fail
     """
     import logging
     logger = logging.getLogger(__name__)
 
+    methods_tried = []
+
+    # METHOD 1: RDKit ETKDGv3 (Current Method - Fast)
     try:
-        # Parse SMILES
-        mol = Chem.MolFromSmiles(smiles)
-        if mol is None:
-            logger.error(f"Failed to parse SMILES: {smiles}")
-            return None
+        mol = _try_rdkit_etkdg_v3(smiles)
+        if mol is not None:
+            logger.info(f"✓ Method 1 SUCCESS: RDKit ETKDGv3")
+            return mol
+        methods_tried.append("ETKDGv3")
+    except Exception as e:
+        logger.warning(f"Method 1 (ETKDGv3) failed: {str(e)}")
+        methods_tried.append("ETKDGv3 (error)")
+
+    # METHOD 2: RDKit Distance Geometry (More Robust)
+    try:
+        mol = _try_rdkit_distance_geometry(smiles)
+        if mol is not None:
+            logger.info(f"✓ Method 2 SUCCESS: Distance Geometry")
+            return mol
+        methods_tried.append("DistanceGeometry")
+    except Exception as e:
+        logger.warning(f"Method 2 (DG) failed: {str(e)}")
+        methods_tried.append("DistanceGeometry (error)")
+
+    # METHOD 3: OpenBabel Gen3D (Best for Complex Structures)
+    try:
+        mol = _try_openbabel_gen3d(smiles)
+        if mol is not None:
+            logger.info(f"✓ Method 3 SUCCESS: OpenBabel Gen3D")
+            return mol
+        methods_tried.append("OpenBabel")
+    except Exception as e:
+        logger.warning(f"Method 3 (OpenBabel) failed: {str(e)}")
+        methods_tried.append("OpenBabel (error)")
+
+    # METHOD 4: RDKit MMFF94s Force Field
+    try:
+        mol = _try_rdkit_mmff94s(smiles)
+        if mol is not None:
+            logger.info(f"✓ Method 4 SUCCESS: MMFF94s")
+            return mol
+        methods_tried.append("MMFF94s")
+    except Exception as e:
+        logger.warning(f"Method 4 (MMFF94s) failed: {str(e)}")
+        methods_tried.append("MMFF94s (error)")
+
+    # METHOD 5: RDKit Universal Force Field (UFF)
+    try:
+        mol = _try_rdkit_uff(smiles)
+        if mol is not None:
+            logger.info(f"✓ Method 5 SUCCESS: UFF")
+            return mol
+        methods_tried.append("UFF")
+    except Exception as e:
+        logger.warning(f"Method 5 (UFF) failed: {str(e)}")
+        methods_tried.append("UFF (error)")
+
+    # METHOD 6: PubChem 3D Download (Last Resort)
+    try:
+        mol = _try_pubchem_3d_download(smiles)
+        if mol is not None:
+            logger.info(f"✓ Method 6 SUCCESS: PubChem 3D")
+            return mol
+        methods_tried.append("PubChem3D")
+    except Exception as e:
+        logger.warning(f"Method 6 (PubChem) failed: {str(e)}")
+        methods_tried.append("PubChem3D (error)")
+
+    # ALL METHODS FAILED
+    logger.error(f"❌ ALL METHODS FAILED for SMILES: {smiles}")
+    logger.error(f"Methods tried: {', '.join(methods_tried)}")
+    return None
+
+
+# ═══════════════════════════════════════════════════════════
+# HELPER FUNCTIONS FOR 6-METHOD PIPELINE
+# ═══════════════════════════════════════════════════════════
+
+def _try_rdkit_etkdg_v3(smiles):
+    """Method 1: RDKit ETKDGv3 (current method, optimized)"""
+    from rdkit import Chem
+    from rdkit.Chem import AllChem
+
+    mol = Chem.MolFromSmiles(smiles)
+    if mol is None:
+        return None
+
+    mol = Chem.AddHs(mol)
+
+    # Try with multiple conformers, select best
+    try:
+        params = AllChem.ETKDGv3()
+        params.randomSeed = 42
+        params.numThreads = 1
+
+        conf_ids = AllChem.EmbedMultipleConfs(
+            mol,
+            numConfs=5,
+            params=params,
+            pruneRmsThresh=0.5
+        )
+
+        if conf_ids and len(conf_ids) > 0:
+            # Optimize and select best
+            energies = []
+            for conf_id in conf_ids:
+                try:
+                    AllChem.MMFFOptimizeMolecule(mol, confId=conf_id, maxIters=500)
+                    props = AllChem.MMFFGetMoleculeProperties(mol)
+                    ff = AllChem.MMFFGetMoleculeForceField(mol, props, confId=conf_id)
+                    if ff:
+                        energies.append((conf_id, ff.CalcEnergy()))
+                except:
+                    continue
+
+            if energies:
+                best_conf_id = min(energies, key=lambda x: x[1])[0]
+                new_mol = Chem.Mol(mol)
+                new_mol.RemoveAllConformers()
+                new_mol.AddConformer(mol.GetConformer(best_conf_id))
+                return new_mol
+    except:
+        pass
+
+    # Fallback to single conformer
+    try:
+        mol = Chem.AddHs(Chem.MolFromSmiles(smiles))
+        result = AllChem.EmbedMolecule(mol, AllChem.ETKDGv3())
+        if result == 0:
+            AllChem.MMFFOptimizeMolecule(mol, maxIters=500)
+            return mol
+    except:
+        pass
+
+    return None
+
+
+def _try_rdkit_distance_geometry(smiles):
+    """Method 2: RDKit Distance Geometry (more robust for complex molecules)"""
+    from rdkit import Chem
+    from rdkit.Chem import AllChem
+
+    mol = Chem.MolFromSmiles(smiles)
+    if mol is None:
+        return None
+
+    mol = Chem.AddHs(mol)
+
+    # Use basic distance geometry (more robust)
+    try:
+        params = AllChem.ETKDG()
+        params.randomSeed = 42
+        params.useRandomCoords = True  # Start from random coordinates
+        params.maxIterations = 1000     # More iterations for complex molecules
+
+        result = AllChem.EmbedMolecule(mol, params)
+
+        if result == 0:  # Success
+            # Try MMFF optimization
+            try:
+                AllChem.MMFFOptimizeMolecule(mol, maxIters=1000)
+            except:
+                # If MMFF fails, try UFF
+                try:
+                    AllChem.UFFOptimizeMolecule(mol, maxIters=1000)
+                except:
+                    pass  # Use unoptimized structure
+
+            return mol
+    except:
+        pass
+
+    return None
+
+
+def _try_openbabel_gen3d(smiles):
+    """Method 3: OpenBabel Gen3D (excellent for complex structures)"""
+    try:
+        from openbabel import openbabel as ob
+        from rdkit import Chem
+        import tempfile
+        import os
+
+        # Create OpenBabel molecule
+        obConversion = ob.OBConversion()
+        obConversion.SetInFormat("smi")
+        obConversion.SetOutFormat("mol2")
+
+        obMol = ob.OBMol()
+        obConversion.ReadString(obMol, smiles)
 
         # Add hydrogens
-        mol = Chem.AddHs(mol)
-        if mol is None:
-            logger.error(f"Failed to add hydrogens for: {smiles}")
+        obMol.AddHydrogens()
+
+        # Generate 3D coordinates
+        builder = ob.OBBuilder()
+        builder.Build(obMol)
+
+        # Optimize with MMFF94
+        ff = ob.OBForceField.FindForceField("mmff94")
+        if not ff:
+            ff = ob.OBForceField.FindForceField("uff")  # Fallback to UFF
+
+        if ff:
+            ff.Setup(obMol)
+            ff.ConjugateGradients(500)
+            ff.GetCoordinates(obMol)
+
+        # Convert to RDKit via MOL2 format
+        mol2_string = obConversion.WriteString(obMol)
+
+        # Write to temp file (RDKit needs file for mol2)
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.mol2', delete=False) as f:
+            f.write(mol2_string)
+            temp_file = f.name
+
+        try:
+            rdkit_mol = Chem.MolFromMol2File(temp_file, removeHs=False)
+            os.unlink(temp_file)
+            return rdkit_mol
+        except:
+            os.unlink(temp_file)
             return None
 
-        # STRATEGY 1: Try multi-conformer generation (best quality)
-        try:
-            num_confs = 10
-            conf_ids = AllChem.EmbedMultipleConfs(
-                mol,
-                numConfs=num_confs,
-                params=AllChem.ETKDGv3(),
-                randomSeed=42,
-                numThreads=1,  # Single thread for stability
-                pruneRmsThresh=0.5  # Remove similar conformers
-            )
+    except ImportError:
+        return None  # OpenBabel not installed
+    except Exception:
+        return None
 
-            if conf_ids and len(conf_ids) > 0:
-                # Success! Optimize each conformer
-                for conf_id in conf_ids:
-                    try:
-                        AllChem.MMFFOptimizeMolecule(mol, confId=conf_id, maxIters=500)
-                    except:
-                        continue
 
-                # Select best (lowest energy) conformer
-                energies = []
-                for conf_id in conf_ids:
-                    try:
-                        props = AllChem.MMFFGetMoleculeProperties(mol)
-                        ff = AllChem.MMFFGetMoleculeForceField(mol, props, confId=conf_id)
-                        if ff:
-                            energy = ff.CalcEnergy()
-                            energies.append((conf_id, energy))
-                    except:
-                        continue
+def _try_rdkit_mmff94s(smiles):
+    """Method 4: RDKit with MMFF94s force field (alternative parameterization)"""
+    from rdkit import Chem
+    from rdkit.Chem import AllChem
 
-                if energies:
-                    # Keep only best conformer
-                    best_conf_id = min(energies, key=lambda x: x[1])[0]
-                    best_energy = min(energies, key=lambda x: x[1])[1]
-                    new_mol = Chem.Mol(mol)
-                    new_mol.RemoveAllConformers()
-                    new_mol.AddConformer(mol.GetConformer(best_conf_id))
-                    logger.debug(f"Generated {len(conf_ids)} conformers, selected best (energy: {best_energy:.2f})")
-                    return new_mol
+    mol = Chem.MolFromSmiles(smiles)
+    if mol is None:
+        return None
 
-        except Exception as e:
-            logger.debug(f"Multi-conformer generation failed: {str(e)}, falling back to single conformer")
+    mol = Chem.AddHs(mol)
 
-        # STRATEGY 2: Fallback to single conformer (original method)
-        try:
-            mol = Chem.AddHs(Chem.MolFromSmiles(smiles))  # Fresh molecule
+    # Try standard embedding first
+    try:
+        AllChem.EmbedMolecule(mol, randomSeed=42)
 
-            # Try ETKDGv3 first (best)
-            result = AllChem.EmbedMolecule(mol, AllChem.ETKDGv3())
+        # Use MMFF94s (alternative to MMFF94)
+        props = AllChem.MMFFGetMoleculeProperties(mol, mmffVariant='MMFF94s')
+        if props:
+            ff = AllChem.MMFFGetMoleculeForceField(mol, props)
+            if ff:
+                ff.Minimize(maxIts=1000)
+                return mol
+    except:
+        pass
 
-            if result != 0:  # Failed
-                # Try ETKDGv2
-                result = AllChem.EmbedMolecule(mol, AllChem.ETKDG())
+    return None
 
-            if result != 0:  # Still failed
-                # Try basic embedding
-                result = AllChem.EmbedMolecule(mol)
 
-            if result != 0:  # All methods failed
-                logger.error(f"All embedding methods failed for SMILES: {smiles}")
-                return None
+def _try_rdkit_uff(smiles):
+    """Method 5: RDKit with Universal Force Field (handles unusual atom types)"""
+    from rdkit import Chem
+    from rdkit.Chem import AllChem
 
-            # Optimize
-            if optimize:
-                try:
-                    AllChem.MMFFOptimizeMolecule(mol, maxIters=500)
-                except:
-                    try:
-                        AllChem.UFFOptimizeMolecule(mol, maxIters=500)
-                    except:
-                        pass  # Continue with unoptimized structure
+    mol = Chem.MolFromSmiles(smiles)
+    if mol is None:
+        return None
 
-            logger.debug(f"Generated single conformer (fallback method)")
+    mol = Chem.AddHs(mol)
+
+    # Try embedding with more permissive settings
+    try:
+        # Use basic embedding (no ETKDG)
+        AllChem.EmbedMolecule(mol, randomSeed=42, useRandomCoords=True)
+
+        # Optimize with UFF (universal, handles all atom types)
+        AllChem.UFFOptimizeMolecule(mol, maxIters=1000)
+
+        return mol
+    except:
+        pass
+
+    return None
+
+
+def _try_pubchem_3d_download(smiles):
+    """Method 6: Download pre-computed 3D structure from PubChem"""
+    import requests
+    from rdkit import Chem
+    import time
+
+    try:
+        # Step 1: Convert SMILES to PubChem CID
+        url = f"https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/smiles/{smiles}/cids/JSON"
+
+        response = requests.get(url, timeout=10)
+
+        if response.status_code != 200:
+            return None
+
+        data = response.json()
+
+        if 'IdentifierList' not in data or 'CID' not in data['IdentifierList']:
+            return None
+
+        cid = data['IdentifierList']['CID'][0]
+
+        # Step 2: Download 3D SDF structure
+        # Wait briefly to respect PubChem rate limits
+        time.sleep(0.2)
+
+        url = f"https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/cid/{cid}/SDF?record_type=3d"
+
+        response = requests.get(url, timeout=10)
+
+        if response.status_code != 200:
+            return None
+
+        # Parse SDF
+        mol = Chem.MolFromMolBlock(response.text, removeHs=False)
+
+        if mol is not None and mol.GetNumConformers() > 0:
             return mol
 
-        except Exception as e:
-            logger.error(f"Single conformer generation also failed: {str(e)}")
-            return None
-
-    except Exception as e:
-        logger.error(f"Unexpected error in smiles_to_3d_mol: {str(e)}")
+    except requests.exceptions.RequestException:
+        return None  # Network error
+    except Exception:
         return None
+
+    return None
 
 
 def add_gasteiger_charges(mol: Chem.Mol) -> Chem.Mol:
