@@ -370,25 +370,17 @@ def submit_to_job_queue(
                 # Drop rows where SMILES column is NaN
                 df_clean = df_clean.dropna(subset=['smiles'])
 
-                # Validate SMILES
-                valid_indices = []
-                for idx, row in df_clean.iterrows():
-                    # Convert to string and handle NaN/None
-                    smiles_str = str(row['smiles']).strip()
+                # Minimal validation: only remove truly empty SMILES
+                # Don't validate with RDKit - let the robust 6-method pipeline handle it
+                # Filter out empty entries
+                df_clean = df_clean[df_clean['smiles'].notna()]
+                df_clean = df_clean[df_clean['smiles'].astype(str).str.strip() != '']
+                df_clean = df_clean[~df_clean['smiles'].astype(str).str.lower().isin(['nan', 'none', 'null', ''])]
+                df_clean = df_clean.reset_index(drop=True)
 
-                    # Skip if empty, NaN, or None
-                    if not smiles_str or smiles_str in ['nan', 'None', '']:
-                        continue
-
-                    mol = Chem.MolFromSmiles(smiles_str)
-                    if mol is not None:
-                        valid_indices.append(idx)
-
-                if not valid_indices:
+                if len(df_clean) == 0:
                     st.error("❌ No valid molecules in library!")
                     return
-
-                df_clean = df_clean.loc[valid_indices].reset_index(drop=True)
 
                 # Save as tab-separated file
                 smi_path = library_dir / f"{Path(library_file.name).stem}_cleaned.smi"
@@ -559,35 +551,36 @@ def run_screening(
                 # Drop rows where SMILES column is NaN
                 df_clean = df_clean.dropna(subset=['smiles'])
 
-                # Validate SMILES
-                valid_indices = []
-                invalid_count = 0
+                # Minimal validation: only remove truly empty SMILES
+                # Don't validate with RDKit - let the robust 6-method pipeline handle it
+                molecule_count = len(df_clean)
 
+                st.info(f"📋 Processing {molecule_count} molecules from library...")
+
+                # Remove only empty/invalid string entries
+                empty_count = 0
                 for idx, row in df_clean.iterrows():
-                    # Convert to string and handle NaN/None
                     smiles_str = str(row['smiles']).strip()
+                    if not smiles_str or smiles_str.lower() in ['nan', 'none', '', 'null']:
+                        empty_count += 1
 
-                    # Skip if empty, NaN, or None
-                    if not smiles_str or smiles_str in ['nan', 'None', '']:
-                        invalid_count += 1
-                        continue
+                # Filter out empty entries
+                df_clean = df_clean[df_clean['smiles'].notna()]
+                df_clean = df_clean[df_clean['smiles'].astype(str).str.strip() != '']
+                df_clean = df_clean[~df_clean['smiles'].astype(str).str.lower().isin(['nan', 'none', 'null'])]
+                df_clean = df_clean.reset_index(drop=True)
 
-                    mol = Chem.MolFromSmiles(smiles_str)
-                    if mol is not None:
-                        valid_indices.append(idx)
-                    else:
-                        invalid_count += 1
+                actual_count = len(df_clean)
 
-                if not valid_indices:
+                if empty_count > 0:
+                    st.warning(f"⚠️ Removed {empty_count} empty SMILES entries")
+
+                if actual_count == 0:
                     st.error("❌ No valid molecules in library!")
                     return
 
-                df_clean = df_clean.loc[valid_indices].reset_index(drop=True)
-
-                if invalid_count > 0:
-                    st.warning(f"⚠️ Skipped {invalid_count} invalid SMILES strings")
-
-                st.info(f"✅ Loaded {len(df_clean)} valid molecules")
+                st.success(f"✅ Loaded {actual_count} molecules for screening")
+                st.info("ℹ️ Complex molecules will be processed using advanced 6-method 3D generation pipeline")
 
                 # Save as tab-separated file (required by batch_prepare_ligands)
                 smi_path = tmpdir / "library_cleaned.smi"
