@@ -1,0 +1,22 @@
+{
+  "af43c9b7-42b2-42f2-ac09-84cff6e030d2": {
+    "job_id": "af43c9b7-42b2-42f2-ac09-84cff6e030d2",
+    "job_type": "single_target",
+    "status": "failed",
+    "created_at": "2025-12-03T14:44:14.860800",
+    "started_at": "2025-12-03T14:45:55.060239",
+    "completed_at": "2025-12-03T14:45:55.509093",
+    "project_name": "Drug Discovery Project",
+    "client_name": "Research Lab",
+    "target_proteins": [
+      "1HSG"
+    ],
+    "ligand_library_path": "data/molecule_libraries/test_drugs/test_drugs.csv",
+    "output_dir": "data/outputs/job_af43c9b7-42b2-42f2-ac09-84cff6e030d2",
+    "affinity_threshold": -7.0,
+    "max_workers": 4,
+    "use_consensus": true,
+    "result_summary": null,
+    "error_message": "\n\u274c ERROR: Failed to prepare any ligands from library.\n\nThis usually means:\n1. Invalid SMILES format in library file\n2. Molecules too small/simple (< 3 heavy atoms)\n3. RDKit cannot generate 3D coordinates\n4. Library file format is incorrect\n\nExpected format: SMILES<tab>ID (no headers)\nExample: CCO\tethanol\n\nCheck the error messages above for specific failures.\nLibrary file: data/molecule_libraries/test_drugs/test_drugs.csv\n"
+  }
+}

@@ -1,0 +1,65 @@
+{
+  "test_library": {
+    "library_id": "test_library",
+    "name": "Test Library",
+    "description": "Test library with 3 molecules",
+    "tags": [
+      "test",
+      "small"
+    ],
+    "file_path": "data/molecule_libraries/test_library/test_3mol.smi",
+    "file_name": "test_3mol.smi",
+    "file_type": ".smi",
+    "num_molecules": 3,
+    "created_at": "2025-12-02T16:27:54.033460",
+    "last_used": "2025-12-04T02:51:16.856413",
+    "use_count": 4,
+    "stats": {
+      "num_molecules": 3,
+      "mean_mw": 390.9283333333335,
+      "min_mw": 323.392,
+      "max_mw": 446.9100000000004,
+      "mean_logp": 3.8018133333333353
+    }
+  },
+  "ss": {
+    "library_id": "ss",
+    "name": "ss",
+    "description": "ss",
+    "tags": [],
+    "file_path": "data/molecule_libraries/ss/molecule_library_custom.csv",
+    "file_name": "molecule_library_custom.csv",
+    "file_type": ".csv",
+    "num_molecules": 10,
+    "created_at": "2025-12-02T16:37:11.842481",
+    "last_used": null,
+    "use_count": 0,
+    "stats": {
+      "num_molecules": 10,
+      "mean_mw": 187.02429999999998,
+      "min_mw": 125.17499999999998,
+      "max_mw": 278.311,
+      "mean_logp": 0.9489300000000002
+    }
+  },
+  "test_drugs": {
+    "library_id": "test_drugs",
+    "name": "test drugs",
+    "description": "",
+    "tags": [],
+    "file_path": "data/molecule_libraries/test_drugs/test_drugs.csv",
+    "file_name": "test_drugs.csv",
+    "file_type": ".csv",
+    "num_molecules": 10,
+    "created_at": "2025-12-03T11:52:54.151226",
+    "last_used": "2025-12-03T17:13:49.532231",
+    "use_count": 3,
+    "stats": {
+      "num_molecules": 10,
+      "mean_mw": 272.8235000000001,
+      "min_mw": 151.165,
+      "max_mw": 558.6500000000002,
+      "mean_logp": 2.318370000000001
+    }
+  }
+}
