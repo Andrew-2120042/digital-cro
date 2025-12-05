@@ -224,58 +224,16 @@ def _try_rdkit_distance_geometry(smiles):
 
 
 def _try_openbabel_gen3d(smiles):
-    """Method 3: OpenBabel Gen3D (excellent for complex structures)"""
-    try:
-        from openbabel import openbabel as ob
-        from rdkit import Chem
-        import tempfile
-        import os
+    """
+    Method 3: OpenBabel Gen3D (excellent for complex structures).
+    TEMPORARILY DISABLED due to segmentation fault issues.
+    """
+    import logging
+    logger = logging.getLogger(__name__)
 
-        # Create OpenBabel molecule
-        obConversion = ob.OBConversion()
-        obConversion.SetInFormat("smi")
-        obConversion.SetOutFormat("mol2")
-
-        obMol = ob.OBMol()
-        obConversion.ReadString(obMol, smiles)
-
-        # Add hydrogens
-        obMol.AddHydrogens()
-
-        # Generate 3D coordinates
-        builder = ob.OBBuilder()
-        builder.Build(obMol)
-
-        # Optimize with MMFF94
-        ff = ob.OBForceField.FindForceField("mmff94")
-        if not ff:
-            ff = ob.OBForceField.FindForceField("uff")  # Fallback to UFF
-
-        if ff:
-            ff.Setup(obMol)
-            ff.ConjugateGradients(500)
-            ff.GetCoordinates(obMol)
-
-        # Convert to RDKit via MOL2 format
-        mol2_string = obConversion.WriteString(obMol)
-
-        # Write to temp file (RDKit needs file for mol2)
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.mol2', delete=False) as f:
-            f.write(mol2_string)
-            temp_file = f.name
-
-        try:
-            rdkit_mol = Chem.MolFromMol2File(temp_file, removeHs=False)
-            os.unlink(temp_file)
-            return rdkit_mol
-        except:
-            os.unlink(temp_file)
-            return None
-
-    except ImportError:
-        return None  # OpenBabel not installed
-    except Exception:
-        return None
+    # Skip OpenBabel if it's causing crashes
+    logger.debug("OpenBabel method temporarily disabled due to stability issues")
+    return None
 
 
 def _try_rdkit_mmff94s(smiles):
