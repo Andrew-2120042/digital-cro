@@ -28,15 +28,16 @@ from rdkit.Chem import rdPartialCharges
 
 def smiles_to_3d_mol(smiles: str, optimize: bool = True) -> Optional[Chem.Mol]:
     """
-    Ultra-robust 3D molecule generation with 6 fallback methods.
+    Ultra-robust 3D molecule generation with 7 fallback methods.
 
     Tries methods in order of speed/reliability:
     1. RDKit ETKDGv3 (fast, works for 80% of molecules)
     2. RDKit Distance Geometry (more robust)
-    3. OpenBabel Gen3D (handles complex structures)
+    3. OpenBabel Gen3D (temporarily disabled - causes segfaults)
     4. RDKit MMFF94s (alternative force field)
     5. RDKit UFF (universal force field)
     6. PubChem 3D download (pre-computed structures)
+    7. RDKit Basic Embedding (last resort, most permissive)
 
     Args:
         smiles (str): SMILES string
@@ -105,7 +106,9 @@ def smiles_to_3d_mol(smiles: str, optimize: bool = True) -> Optional[Chem.Mol]:
         logger.warning(f"Method 5 (UFF) failed: {str(e)}")
         methods_tried.append("UFF (error)")
 
+    # ═══════════════════════════════════════════════════════════
     # METHOD 6: PubChem 3D Download (Last Resort)
+    # ═══════════════════════════════════════════════════════════
     try:
         mol = _try_pubchem_3d_download(smiles)
         if mol is not None:
@@ -116,14 +119,29 @@ def smiles_to_3d_mol(smiles: str, optimize: bool = True) -> Optional[Chem.Mol]:
         logger.warning(f"Method 6 (PubChem) failed: {str(e)}")
         methods_tried.append("PubChem3D (error)")
 
+    # ═══════════════════════════════════════════════════════════
+    # METHOD 7: RDKit Standard Embedding (No ETKDG, Just Basic)
+    # ═══════════════════════════════════════════════════════════
+    try:
+        mol = _try_rdkit_basic_embedding(smiles)
+        if mol is not None:
+            logger.info(f"✓ Method 7 SUCCESS: Basic Embedding")
+            return mol
+        methods_tried.append("BasicEmbedding")
+    except Exception as e:
+        logger.warning(f"Method 7 (Basic) failed: {str(e)}")
+        methods_tried.append("BasicEmbedding (error)")
+
+    # ═══════════════════════════════════════════════════════════
     # ALL METHODS FAILED
+    # ═══════════════════════════════════════════════════════════
     logger.error(f"❌ ALL METHODS FAILED for SMILES: {smiles}")
     logger.error(f"Methods tried: {', '.join(methods_tried)}")
     return None
 
 
 # ═══════════════════════════════════════════════════════════
-# HELPER FUNCTIONS FOR 6-METHOD PIPELINE
+# HELPER FUNCTIONS FOR 7-METHOD PIPELINE
 # ═══════════════════════════════════════════════════════════
 
 def _try_rdkit_etkdg_v3(smiles):
@@ -295,44 +313,129 @@ def _try_pubchem_3d_download(smiles):
     import requests
     from rdkit import Chem
     import time
+    import logging
+
+    logger = logging.getLogger(__name__)
 
     try:
-        # Step 1: Convert SMILES to PubChem CID
-        url = f"https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/smiles/{smiles}/cids/JSON"
+        # STEP 1: Convert SMILES to canonical form (improve match rate)
+        mol = Chem.MolFromSmiles(smiles)
+        if mol is None:
+            return None
 
-        response = requests.get(url, timeout=10)
+        canonical_smiles = Chem.MolToSmiles(mol, canonical=True)
+
+        # URL encode the SMILES
+        import urllib.parse
+        encoded_smiles = urllib.parse.quote(canonical_smiles)
+
+        logger.info(f"Trying PubChem download for: {canonical_smiles[:50]}...")
+
+        # STEP 2: Convert SMILES to PubChem CID
+        url = f"https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/smiles/{encoded_smiles}/cids/JSON"
+
+        response = requests.get(url, timeout=15)
 
         if response.status_code != 200:
+            logger.debug(f"PubChem CID lookup failed: HTTP {response.status_code}")
             return None
 
         data = response.json()
 
         if 'IdentifierList' not in data or 'CID' not in data['IdentifierList']:
+            logger.debug("No PubChem CID found for this molecule")
             return None
 
-        cid = data['IdentifierList']['CID'][0]
+        cids = data['IdentifierList']['CID']
+        if not cids:
+            return None
 
-        # Step 2: Download 3D SDF structure
-        # Wait briefly to respect PubChem rate limits
-        time.sleep(0.2)
+        cid = cids[0]  # Use first CID
+        logger.info(f"Found PubChem CID: {cid}")
+
+        # STEP 3: Download 3D SDF structure
+        time.sleep(0.3)  # Respect rate limits
 
         url = f"https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/cid/{cid}/SDF?record_type=3d"
 
-        response = requests.get(url, timeout=10)
+        response = requests.get(url, timeout=15)
 
         if response.status_code != 200:
+            logger.debug(f"PubChem 3D SDF download failed: HTTP {response.status_code}")
+
+            # Try 2D conformer if 3D not available
+            time.sleep(0.3)
+            url = f"https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/cid/{cid}/SDF"
+            response = requests.get(url, timeout=15)
+
+            if response.status_code != 200:
+                logger.debug("Neither 3D nor 2D structure available")
+                return None
+
+        # STEP 4: Parse SDF
+        sdf_text = response.text
+
+        if not sdf_text or len(sdf_text) < 100:
+            logger.debug("Empty or invalid SDF received")
             return None
 
-        # Parse SDF
-        mol = Chem.MolFromMolBlock(response.text, removeHs=False)
+        mol = Chem.MolFromMolBlock(sdf_text, removeHs=False)
 
-        if mol is not None and mol.GetNumConformers() > 0:
+        if mol is None:
+            logger.debug("Failed to parse SDF from PubChem")
+            return None
+
+        # STEP 5: If 2D, generate 3D
+        if mol.GetNumConformers() == 0:
+            logger.info("PubChem returned 2D structure, generating 3D...")
+            from rdkit.Chem import AllChem
+            AllChem.EmbedMolecule(mol)
+            AllChem.MMFFOptimizeMolecule(mol)
+
+        logger.info(f"✓ PubChem download successful! CID: {cid}")
+        return mol
+
+    except requests.exceptions.RequestException as e:
+        logger.debug(f"PubChem network error: {str(e)}")
+        return None
+    except Exception as e:
+        logger.debug(f"PubChem download failed: {str(e)}")
+        return None
+
+
+def _try_rdkit_basic_embedding(smiles):
+    """
+    Method 7: Most basic RDKit embedding possible.
+    No fancy parameters, just brute force 3D generation.
+    """
+    from rdkit import Chem
+    from rdkit.Chem import AllChem
+
+    try:
+        mol = Chem.MolFromSmiles(smiles)
+        if mol is None:
+            return None
+
+        mol = Chem.AddHs(mol)
+
+        # Try most permissive embedding settings
+        AllChem.EmbedMolecule(
+            mol,
+            randomSeed=42,
+            useRandomCoords=True,
+            boxSizeMult=10.0,  # Very large box
+            numZeroFail=1000,   # Try many times
+            numThreads=0
+        )
+
+        # Don't even optimize - just use raw coordinates
+        # Better to have approximate structure than nothing
+
+        if mol.GetNumConformers() > 0:
             return mol
 
-    except requests.exceptions.RequestException:
-        return None  # Network error
-    except Exception:
-        return None
+    except:
+        pass
 
     return None
 
