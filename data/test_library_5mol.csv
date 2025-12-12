@@ -1,0 +1,6 @@
+ligand_id,smiles
+gefitinib,COc1cc2ncnc(Nc3ccc(F)c(Cl)c3)c2cc1OCCCN4CCOCC4
+dabrafenib,Cc1cnc(NC(=O)c2ccc(C)c(Nc3nccc(-c4cccnc4)n3)c2)s1
+morphine,CN1CCC23c4ccc(O)c(O)c4CC2C1Cc5c3cccc5O
+celecoxib,Cc1ccc(-c2cc(C(F)(F)F)nn2-c3ccc(S(N)(=O)=O)cc3)cc1
+amitriptyline,CN(C)CCC=C1c2ccccc2COc3c1cccc3

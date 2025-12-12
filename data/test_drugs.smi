@@ -1,0 +1,10 @@
+CC(=O)Oc1ccccc1C(=O)O	aspirin
+CC(C)Cc1ccc(C(C)C(=O)O)cc1	ibuprofen
+CN1C=NC2=C1C(=O)N(C(=O)N2C)C	caffeine
+CN1CCC23C4C1CC5=C2C(=C(C=C5)O)OC3C(C=C4)O	morphine
+CN1CCCC1C2=CN=CC=C2	nicotine
+CC(=O)NC1=CC=C(C=C1)O	paracetamol
+CCCC1=NN(C2=C1N=C(NC2=O)C3=C(C=CC(=C3)S(=O)(=O)N4CCN(CC4)C)OCC)C	viagra
+CC(C)C1=C(C(=C(N1CCC(CC(CC(=O)O)O)O)C2=CC=C(C=C2)F)C3=CC=CC=C3)C(=O)NC4=CC=CC=C4	lipitor
+CNCCC(C1=CC=CC=C1)OC2=CC=C(C=C2)C(F)(F)F	prozac
+CC(C)CC1=CC=C(C=C1)C(C)C(=O)O	advil

@@ -1,0 +1,11 @@
+id,smiles
+caffeine,Cn1cnc2n(C)c(=O)n(C)c(=O)c12
+nicotine,CN1CCC[C@H]1c2cccnc2
+theobromine,Cn1cnc2n(C)c(=O)[nH]c(=O)c12
+dopamine,C1=CC(=CC=C1CCN)O
+serotonin,C1=CC2=C(C=C1)C(=CN2)CCN
+histamine,CCNCC1=CN=CN1
+melatonin,CC(=O)NCCC1=CNC2=CC=CC=C12
+adrenaline,C1=CC(=C(C=C1C(CO)N)O)O
+morphine,CN1CCC23C4C1CC5=CC(=O)OC5C2CCC34O
+quinine,CC(C)C1=CC2=C(C=C1)N=C3C(=O)NC4=C3C=CC=C4O2

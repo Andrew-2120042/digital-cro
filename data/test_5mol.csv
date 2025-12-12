@@ -1,0 +1,6 @@
+id,smiles
+gefitinib,COc1cc2ncnc(Nc3ccc(F)c(Cl)c3)c2cc1OCCCN1MORPH
+imatinib,Cc1ccc(NC(=O)c2ccccc2CN3CCN(C)CC3)cc1Nc4nccc(c4)c5cccnc5
+erlotinib,COCCOc1cc2ncnc(Nc3cccc(c3)C#C)c2cc1OCCCN1MORPH
+lapatinib,CS(=O)(=O)CCNCc1ccc(cc1)Oc2ccc3ncnc(Nc4ccc(OCc5cccc(F)c5)c(Cl)c4)c3c2
+sunitinib,CCN(CC)CCNC(=O)c1c(C)[nH]c(C=C2C(=O)Nc3ccc(F)cc23)c1C
